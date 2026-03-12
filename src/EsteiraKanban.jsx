@@ -101,6 +101,40 @@ const getNextStatuses = (current) => {
 
 const getColumnLabel = (id) => COLUMNS.find((c) => c.id === id)?.label || id;
 
+// Modal overlay (fora do componente para evitar re-render e perda de foco)
+const Modal = ({ children, onClose }) => (
+  <div
+    onClick={onClose}
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: "rgba(15,23,42,0.6)",
+      backdropFilter: "blur(4px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1000,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        background: "#fff",
+        borderRadius: 16,
+        padding: 32,
+        minWidth: 400,
+        maxWidth: 500,
+        boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
+      }}
+    >
+      {children}
+    </div>
+  </div>
+);
+
 export default function EsteiraKanban() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -199,40 +233,6 @@ export default function EsteiraKanban() {
   const concluidoCount = items.filter((i) => i.status === "concluido").length;
   const progressPercent =
     items.length > 0 ? Math.round((concluidoCount / items.length) * 100) : 0;
-
-  // Modal overlay
-  const Modal = ({ children, onClose }) => (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: "rgba(15,23,42,0.6)",
-        backdropFilter: "blur(4px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#fff",
-          borderRadius: 16,
-          padding: 32,
-          minWidth: 400,
-          maxWidth: 500,
-          boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
-        }}
-      >
-        {children}
-      </div>
-    </div>
-  );
 
   // Tela de loading
   if (loading) {
@@ -544,12 +544,12 @@ export default function EsteiraKanban() {
       {/* Kanban Board */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          display: "flex",
           gap: 16,
           padding: "24px 24px",
-          overflowY: "auto",
-          height: "calc(100vh - 160px)",
+          overflowX: "auto",
+          minHeight: 200,
+          paddingBottom: 32,
         }}
       >
         {COLUMNS.map((col) => {
@@ -564,8 +564,8 @@ export default function EsteiraKanban() {
                 border: "1px solid rgba(255,255,255,0.06)",
                 display: "flex",
                 flexDirection: "column",
-                overflow: "hidden",
-                minHeight: 280,
+                minWidth: 320,
+                flexShrink: 0,
               }}
             >
               {/* Column Header */}
@@ -625,8 +625,6 @@ export default function EsteiraKanban() {
               {/* Cards */}
               <div
                 style={{
-                  flex: 1,
-                  overflowY: "auto",
                   padding: 10,
                   display: "flex",
                   flexDirection: "column",
