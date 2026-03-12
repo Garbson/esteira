@@ -1,7 +1,7 @@
-import EsteiraKanban from './EsteiraKanban'
+import EsteiraKanban from "./EsteiraKanban";
 
 function App() {
-  return <EsteiraKanban />
+  return <EsteiraKanban />;
 }
 
-export default App
+export default App;

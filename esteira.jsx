@@ -1,11 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  addItem as firebaseAddItem,
-  removeItem as firebaseRemoveItem,
-  updateItem as firebaseUpdateItem,
-  onItemsChange,
-} from "./firebase";
-import { APP_VERSION, CHANGELOG } from "./version";
+import { useMemo, useState } from "react";
 
 const COLUMNS = [
   {
@@ -92,7 +85,7 @@ const getNextStatuses = (current) => {
   const map = {
     aguardando: ["processando"],
     processando: ["erro", "isa"],
-    erro: ["isa"],
+    erro: ["print"],
     isa: ["print"],
     print: ["concluido", "erro"],
     concluido: [],
@@ -102,49 +95,57 @@ const getNextStatuses = (current) => {
 
 const getColumnLabel = (id) => COLUMNS.find((c) => c.id === id)?.label || id;
 
-// Modal overlay (fora do componente para evitar re-render e perda de foco)
-const Modal = ({ children, onClose }) => (
-  <div
-    onClick={onClose}
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: "rgba(15,23,42,0.6)",
-      backdropFilter: "blur(4px)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000,
-    }}
-  >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        background: "#fff",
-        borderRadius: 16,
-        padding: 32,
-        minWidth: 400,
-        maxWidth: 500,
-        boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
-      }}
-    >
-      {children}
-    </div>
-  </div>
-);
-
 export default function EsteiraKanban() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState([
+    {
+      id: 1,
+      nome: "ARQ_FATURA_JAN_2026",
+      faturas: 1250,
+      status: "aguardando",
+      responsavel: "Boaventura",
+      prioridade: "normal",
+      observacao: "",
+      historico: [
+        {
+          de: null,
+          para: "aguardando",
+          usuario: "Boaventura",
+          data: new Date().toISOString(),
+          obs: "",
+        },
+      ],
+    },
+    {
+      id: 2,
+      nome: "ARQ_FATURA_FEV_2026",
+      faturas: 980,
+      status: "processando",
+      responsavel: "Felipe",
+      prioridade: "urgente",
+      observacao: "",
+      historico: [
+        {
+          de: null,
+          para: "aguardando",
+          usuario: "Boaventura",
+          data: new Date(Date.now() - 86400000).toISOString(),
+          obs: "",
+        },
+        {
+          de: "aguardando",
+          para: "processando",
+          usuario: "Felipe",
+          data: new Date().toISOString(),
+          obs: "",
+        },
+      ],
+    },
+  ]);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showHistModal, setShowHistModal] = useState(null);
   const [showMoveModal, setShowMoveModal] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
-  const [showChangelog, setShowChangelog] = useState(false);
   const [newItem, setNewItem] = useState({
     nome: "",
     faturas: "",
@@ -155,19 +156,12 @@ export default function EsteiraKanban() {
   const [moveObs, setMoveObs] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterUser, setFilterUser] = useState("");
+  const [nextId, setNextId] = useState(3);
 
-  // 🔥 Escuta mudanças em tempo real do Firebase
-  useEffect(() => {
-    const unsubscribe = onItemsChange((firebaseItems) => {
-      setItems(firebaseItems);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const addItem = async () => {
+  const addItem = () => {
     if (!newItem.nome.trim() || !newItem.faturas) return;
     const item = {
+      id: nextId,
       nome: newItem.nome.trim().toUpperCase(),
       faturas: parseInt(newItem.faturas),
       status: "aguardando",
@@ -184,39 +178,44 @@ export default function EsteiraKanban() {
         },
       ],
     };
-    await firebaseAddItem(item);
+    setItems((prev) => [...prev, item]);
+    setNextId((p) => p + 1);
     setNewItem({ nome: "", faturas: "", prioridade: "normal" });
     setShowAddModal(false);
   };
 
-  const moveItem = async (itemId) => {
+  const moveItem = (itemId) => {
     if (!moveUser || !moveTarget) return;
-    const item = items.find((i) => i.id === itemId);
-    if (!item) return;
-    await firebaseUpdateItem(itemId, {
-      status: moveTarget,
-      responsavel: moveUser,
-      observacao: moveObs || item.observacao,
-      historico: [
-        ...item.historico,
-        {
-          de: item.status,
-          para: moveTarget,
-          usuario: moveUser,
-          data: new Date().toISOString(),
-          obs: moveObs,
-        },
-      ],
-    });
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        return {
+          ...item,
+          status: moveTarget,
+          responsavel: moveUser,
+          observacao: moveObs || item.observacao,
+          historico: [
+            ...item.historico,
+            {
+              de: item.status,
+              para: moveTarget,
+              usuario: moveUser,
+              data: new Date().toISOString(),
+              obs: moveObs,
+            },
+          ],
+        };
+      }),
+    );
     setShowMoveModal(null);
     setMoveUser("");
     setMoveTarget("");
     setMoveObs("");
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!showDeleteConfirm) return;
-    await firebaseRemoveItem(showDeleteConfirm.id);
+    setItems((prev) => prev.filter((i) => i.id !== showDeleteConfirm.id));
     setShowDeleteConfirm(null);
   };
 
@@ -236,35 +235,39 @@ export default function EsteiraKanban() {
   const progressPercent =
     items.length > 0 ? Math.round((concluidoCount / items.length) * 100) : 0;
 
-  // Tela de loading
-  if (loading) {
-    return (
+  // Modal overlay
+  const Modal = ({ children, onClose }) => (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: "rgba(15,23,42,0.6)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+    >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
-          minHeight: "100vh",
-          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-          gap: 16,
+          background: "#fff",
+          borderRadius: 16,
+          padding: 32,
+          minWidth: 400,
+          maxWidth: 500,
+          boxShadow: "0 25px 60px rgba(0,0,0,0.3)",
         }}
       >
-        <div
-          style={{
-            width: 48,
-            height: 48,
-            border: "4px solid rgba(255,255,255,0.1)",
-            borderTop: "4px solid #6366f1",
-            borderRadius: "50%",
-            animation: "spin 1s linear infinite",
-          }}
-        />
-        <p style={{ color: "#94a3b8", fontSize: 16 }}>Carregando esteira...</p>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        {children}
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div
@@ -301,18 +304,7 @@ export default function EsteiraKanban() {
             Esteira de Processamento
           </h1>
           <p style={{ margin: "4px 0 0", fontSize: 14, color: "#94a3b8" }}>
-            Controle de arquivos • Print Center •{" "}
-            <span
-              onClick={() => setShowChangelog(true)}
-              style={{
-                color: "#6366f1",
-                cursor: "pointer",
-                fontWeight: 600,
-                borderBottom: "1px dashed #6366f1",
-              }}
-            >
-              v{APP_VERSION}
-            </span>
+            Controle de arquivos • Print Center
           </p>
         </div>
 
@@ -549,7 +541,7 @@ export default function EsteiraKanban() {
               whiteSpace: "nowrap",
             }}
           >
-            Erro → ISA → Print
+            Erro → Correção → Print
           </span>
         </div>
       </div>
@@ -557,12 +549,12 @@ export default function EsteiraKanban() {
       {/* Kanban Board */}
       <div
         style={{
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
           gap: 16,
           padding: "24px 24px",
-          overflowX: "auto",
-          minHeight: 200,
-          paddingBottom: 32,
+          overflowY: "auto",
+          height: "calc(100vh - 160px)",
         }}
       >
         {COLUMNS.map((col) => {
@@ -577,8 +569,8 @@ export default function EsteiraKanban() {
                 border: "1px solid rgba(255,255,255,0.06)",
                 display: "flex",
                 flexDirection: "column",
-                minWidth: 320,
-                flexShrink: 0,
+                overflow: "hidden",
+                minHeight: 280,
               }}
             >
               {/* Column Header */}
@@ -638,6 +630,8 @@ export default function EsteiraKanban() {
               {/* Cards */}
               <div
                 style={{
+                  flex: 1,
+                  overflowY: "auto",
                   padding: 10,
                   display: "flex",
                   flexDirection: "column",
@@ -1361,117 +1355,6 @@ export default function EsteiraKanban() {
               </button>
             </div>
           </div>
-        </Modal>
-      )}
-
-      {/* Changelog Modal */}
-      {showChangelog && (
-        <Modal onClose={() => setShowChangelog(false)}>
-          <h2
-            style={{
-              margin: "0 0 8px",
-              fontSize: 20,
-              color: "#1e293b",
-              fontWeight: 700,
-            }}
-          >
-            📌 Changelog — v{APP_VERSION}
-          </h2>
-          <p style={{ margin: "0 0 20px", fontSize: 13, color: "#94a3b8" }}>
-            Histórico de versões do sistema
-          </p>
-          <div
-            style={{
-              maxHeight: 400,
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: 20,
-            }}
-          >
-            {CHANGELOG.map((release, idx) => (
-              <div key={idx}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    marginBottom: 10,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: "#6366f1",
-                      background: "#eef2ff",
-                      padding: "4px 12px",
-                      borderRadius: 8,
-                    }}
-                  >
-                    v{release.versao}
-                  </span>
-                  <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                    {new Date(release.data).toLocaleDateString("pt-BR")}
-                  </span>
-                  {idx === 0 && (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: "#10b981",
-                        background: "#ecfdf5",
-                        padding: "2px 8px",
-                        borderRadius: 6,
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Atual
-                    </span>
-                  )}
-                </div>
-                <ul
-                  style={{
-                    margin: 0,
-                    paddingLeft: 20,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                  }}
-                >
-                  {release.mudancas.map((m, i) => (
-                    <li
-                      key={i}
-                      style={{
-                        fontSize: 13,
-                        color: "#475569",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {m}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={() => setShowChangelog(false)}
-            style={{
-              width: "100%",
-              padding: "12px",
-              borderRadius: 10,
-              border: "1px solid #e2e8f0",
-              background: "#fff",
-              color: "#64748b",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-              marginTop: 16,
-            }}
-          >
-            Fechar
-          </button>
         </Modal>
       )}
     </div>
