@@ -10,9 +10,19 @@
 //   PATCH → Correção de bug ou ajuste pequeno
 // ============================================================
 
-export const APP_VERSION = "1.0.0";
+export const APP_VERSION = "1.1.0";
 
 export const CHANGELOG = [
+  {
+    versao: "1.1.0",
+    data: "2026-03-12",
+    mudancas: [
+      "🖱️ Drag and Drop — arraste cards entre colunas",
+      "↔ Mover para qualquer etapa (não só a próxima)",
+      "🎯 Visual de destaque ao arrastar sobre uma coluna",
+      "📋 Modal de mover agora mostra todas as colunas disponíveis",
+    ],
+  },
   {
     versao: "1.0.0",
     data: "2026-03-12",

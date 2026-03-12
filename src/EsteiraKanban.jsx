@@ -58,7 +58,6 @@ const USERS = [
   "Felipe",
   "Natalia",
   "ISA",
-  "Print Center",
 ];
 
 const PRIORIDADES = [
@@ -89,15 +88,7 @@ const formatDate = (d) => {
 };
 
 const getNextStatuses = (current) => {
-  const map = {
-    aguardando: ["processando"],
-    processando: ["erro", "isa"],
-    erro: ["isa"],
-    isa: ["print"],
-    print: ["concluido", "erro"],
-    concluido: [],
-  };
-  return map[current] || [];
+  return COLUMNS.filter((c) => c.id !== current).map((c) => c.id);
 };
 
 const getColumnLabel = (id) => COLUMNS.find((c) => c.id === id)?.label || id;
@@ -155,6 +146,10 @@ export default function EsteiraKanban() {
   const [moveObs, setMoveObs] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterUser, setFilterUser] = useState("");
+  const [dragItem, setDragItem] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+  const [showDragConfirm, setShowDragConfirm] = useState(null); // { item, targetColId }
+  const [dragUser, setDragUser] = useState("");
 
   // 🔥 Escuta mudanças em tempo real do Firebase
   useEffect(() => {
@@ -218,6 +213,40 @@ export default function EsteiraKanban() {
     if (!showDeleteConfirm) return;
     await firebaseRemoveItem(showDeleteConfirm.id);
     setShowDeleteConfirm(null);
+  };
+
+  // 🖱️ Drag and Drop — soltar o card abre confirmação
+  const handleDrop = (targetColId) => {
+    if (!dragItem || dragItem.status === targetColId) {
+      setDragItem(null);
+      setDragOverCol(null);
+      return;
+    }
+    setShowDragConfirm({ item: dragItem, targetColId });
+    setDragItem(null);
+    setDragOverCol(null);
+  };
+
+  // Confirmar o drag com usuário selecionado
+  const confirmDrag = async () => {
+    if (!showDragConfirm || !dragUser) return;
+    const { item, targetColId } = showDragConfirm;
+    await firebaseUpdateItem(item.id, {
+      status: targetColId,
+      responsavel: dragUser,
+      historico: [
+        ...item.historico,
+        {
+          de: item.status,
+          para: targetColId,
+          usuario: dragUser,
+          data: new Date().toISOString(),
+          obs: "",
+        },
+      ],
+    });
+    setShowDragConfirm(null);
+    setDragUser("");
   };
 
   const filteredItems = useMemo(() => {
@@ -571,14 +600,28 @@ export default function EsteiraKanban() {
           return (
             <div
               key={col.id}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOverCol(col.id);
+              }}
+              onDragLeave={() => setDragOverCol(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                handleDrop(col.id);
+              }}
               style={{
-                background: "rgba(255,255,255,0.04)",
+                background: dragOverCol === col.id
+                  ? col.color + "15"
+                  : "rgba(255,255,255,0.04)",
                 borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.06)",
+                border: dragOverCol === col.id
+                  ? `2px dashed ${col.color}`
+                  : "1px solid rgba(255,255,255,0.06)",
                 display: "flex",
                 flexDirection: "column",
                 minWidth: 320,
                 flexShrink: 0,
+                transition: "all 0.2s ease",
               }}
             >
               {/* Column Header */}
@@ -649,12 +692,15 @@ export default function EsteiraKanban() {
                     style={{
                       padding: 20,
                       textAlign: "center",
-                      color: "#475569",
+                      color: dragOverCol === col.id ? col.color : "#475569",
                       fontSize: 13,
                       fontStyle: "italic",
+                      border: dragOverCol === col.id ? `2px dashed ${col.color}44` : "2px dashed transparent",
+                      borderRadius: 10,
+                      transition: "all 0.2s",
                     }}
                   >
-                    Nenhum arquivo
+                    {dragOverCol === col.id ? "Solte aqui" : "Nenhum arquivo"}
                   </div>
                 )}
                 {colItems.map((item) => {
@@ -666,12 +712,21 @@ export default function EsteiraKanban() {
                   return (
                     <div
                       key={item.id}
+                      draggable
+                      onDragStart={(e) => {
+                        setDragItem(item);
+                        e.currentTarget.style.opacity = "0.5";
+                      }}
+                      onDragEnd={(e) => {
+                        e.currentTarget.style.opacity = "1";
+                        setDragOverCol(null);
+                      }}
                       style={{
                         background: "#fff",
                         borderRadius: 10,
                         padding: 14,
                         borderLeft: `4px solid ${col.color}`,
-                        cursor: "default",
+                        cursor: "grab",
                         transition: "transform 0.15s, box-shadow 0.15s",
                         boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
                         position: "relative",
@@ -794,27 +849,25 @@ export default function EsteiraKanban() {
 
                       {/* Card Actions */}
                       <div style={{ display: "flex", gap: 4 }}>
-                        {getNextStatuses(item.status).length > 0 && (
-                          <button
-                            onClick={() => {
-                              setShowMoveModal(item);
-                              setMoveTarget(getNextStatuses(item.status)[0]);
-                            }}
-                            style={{
-                              flex: 1,
-                              padding: "6px 0",
-                              borderRadius: 6,
-                              border: "none",
-                              background: col.color + "18",
-                              color: col.color,
-                              fontSize: 11,
-                              fontWeight: 600,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Mover →
-                          </button>
-                        )}
+                        <button
+                          onClick={() => {
+                            setShowMoveModal(item);
+                            setMoveTarget("");
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: "6px 0",
+                            borderRadius: 6,
+                            border: "none",
+                            background: col.color + "18",
+                            color: col.color,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          ↔ Mover
+                        </button>
                         <button
                           onClick={() => setShowHistModal(item)}
                           style={{
@@ -1048,34 +1101,31 @@ export default function EsteiraKanban() {
               >
                 Mover para
               </label>
-              <div style={{ display: "flex", gap: 8 }}>
-                {getNextStatuses(showMoveModal.status).map((s) => {
-                  const col = COLUMNS.find((c) => c.id === s);
-                  return (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {COLUMNS.filter((c) => c.id !== showMoveModal.status).map((c) => (
                     <button
-                      key={s}
-                      onClick={() => setMoveTarget(s)}
+                      key={c.id}
+                      onClick={() => setMoveTarget(c.id)}
                       style={{
-                        flex: 1,
                         padding: "10px 12px",
                         borderRadius: 8,
                         border:
-                          moveTarget === s
-                            ? `2px solid ${col.color}`
+                          moveTarget === c.id
+                            ? `2px solid ${c.color}`
                             : "2px solid #e2e8f0",
                         background:
-                          moveTarget === s ? col.color + "15" : "#fff",
-                        color: moveTarget === s ? col.color : "#64748b",
+                          moveTarget === c.id ? c.color + "15" : "#fff",
+                        color: moveTarget === c.id ? c.color : "#64748b",
                         fontSize: 13,
                         fontWeight: 600,
                         cursor: "pointer",
                         transition: "all 0.15s",
+                        textAlign: "left",
                       }}
                     >
-                      {col.icon} {col.label}
+                      {c.icon} {c.label}
                     </button>
-                  );
-                })}
+                  ))}
               </div>
             </div>
             <div>
@@ -1472,6 +1522,119 @@ export default function EsteiraKanban() {
           >
             Fechar
           </button>
+        </Modal>
+      )}
+
+      {/* Drag Confirm Modal */}
+      {showDragConfirm && (
+        <Modal
+          onClose={() => {
+            setShowDragConfirm(null);
+            setDragUser("");
+          }}
+        >
+          <h2
+            style={{
+              margin: "0 0 8px",
+              fontSize: 20,
+              color: "#1e293b",
+              fontWeight: 700,
+            }}
+          >
+            🖱️ Confirmar Movimentação
+          </h2>
+          <p style={{ margin: "0 0 6px", fontSize: 14, color: "#64748b" }}>
+            <strong>{showDragConfirm.item.nome}</strong>
+          </p>
+          <p style={{ margin: "0 0 20px", fontSize: 13, color: "#94a3b8" }}>
+            {getColumnLabel(showDragConfirm.item.status)} →{" "}
+            <span
+              style={{
+                color: COLUMNS.find((c) => c.id === showDragConfirm.targetColId)?.color,
+                fontWeight: 600,
+              }}
+            >
+              {COLUMNS.find((c) => c.id === showDragConfirm.targetColId)?.icon}{" "}
+              {getColumnLabel(showDragConfirm.targetColId)}
+            </span>
+          </p>
+          <div style={{ marginBottom: 20 }}>
+            <label
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#475569",
+                display: "block",
+                marginBottom: 8,
+              }}
+            >
+              Quem está movendo?
+            </label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {USERS.map((u) => (
+                <button
+                  key={u}
+                  onClick={() => setDragUser(u)}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 8,
+                    border:
+                      dragUser === u
+                        ? "2px solid #6366f1"
+                        : "2px solid #e2e8f0",
+                    background: dragUser === u ? "#eef2ff" : "#fff",
+                    color: dragUser === u ? "#6366f1" : "#64748b",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              onClick={() => {
+                setShowDragConfirm(null);
+                setDragUser("");
+              }}
+              style={{
+                flex: 1,
+                padding: "12px",
+                borderRadius: 10,
+                border: "1px solid #e2e8f0",
+                background: "#fff",
+                color: "#64748b",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmDrag}
+              disabled={!dragUser}
+              style={{
+                flex: 1,
+                padding: "12px",
+                borderRadius: 10,
+                border: "none",
+                background: dragUser
+                  ? "linear-gradient(135deg, #6366f1, #8b5cf6)"
+                  : "#e2e8f0",
+                color: dragUser ? "#fff" : "#94a3b8",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: dragUser ? "pointer" : "not-allowed",
+              }}
+            >
+              Confirmar
+            </button>
+          </div>
         </Modal>
       )}
     </div>
